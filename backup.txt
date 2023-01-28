@@ -1,0 +1,13 @@
+
+# backup sda to sdb1
+
+sudo mkdir /mnt/backup
+sudo mount /dev/sdb1
+sudo dd if=/dev/sda conv=sync,noerror bs=100M status=progress | gzip -c > /mnt/backup/diskimage.gz
+
+# OR 
+
+sudo dd if=/dev/sda conv=sync,noerror bs=100M | pv -s 2G | gzip -c > /mnt/backup/diskimage.gz
+
+# pv < /dev/sda | gzip -c > /mnt/backup/diskimage.gz
+export BLOCKSIZE=`sudo blockdev --getsize64 /dev/sda` && sudo dd if=/dev/sda bs=100MB | pv -s $BLOCKSIZE | gzip -c > /mnt/backup/diskimage.gz
