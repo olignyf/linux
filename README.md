@@ -1,2 +1,2 @@
 # linux
-Linux misc scripts for backup / restore
+Linux misc scripts or instructions for backup / restore
