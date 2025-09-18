@@ -1,6 +1,85 @@
 #!/usr/bin/env bash
 # gpu-diagnose.sh - Full GPU diagnostic script
 
+# Check for command line arguments
+if [ "$1" = "--remove-nvidia" ]; then
+    echo "=== NVIDIA Driver Removal ==="
+    echo "This will completely remove all NVIDIA drivers and packages."
+    echo "⚠️  WARNING: This will break NVIDIA GPU functionality until drivers are reinstalled."
+    echo
+    read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Removing all NVIDIA packages..."
+        
+        # Check if running as root - require explicit sudo invocation
+        if [ "$EUID" -eq 0 ]; then
+            REMOVE_CMD=""
+        else
+            echo "❌ Error: This script must be run as root for the --remove-nvidia option"
+            echo "   Please run: sudo $0 --remove-nvidia"
+            echo "   The --remove-nvidia option requires root privileges for safety"
+            exit 1
+        fi
+        
+        # Stop any processes using NVIDIA devices
+        echo "Stopping processes using NVIDIA devices..."
+        $REMOVE_CMD lsof /dev/nvidia* 2>/dev/null | grep -v "COMMAND" | awk '{print $2}' | sort -u | xargs -r $REMOVE_CMD kill -9 2>/dev/null || true
+        
+        # Remove all NVIDIA packages
+        echo "Removing NVIDIA packages..."
+        $REMOVE_CMD apt remove --purge '^nvidia-.*' -y
+        
+        # Clean up any remaining packages
+        echo "Cleaning up remaining packages..."
+        $REMOVE_CMD apt autoremove -y
+        
+        # Remove any remaining NVIDIA modules
+        echo "Unloading NVIDIA kernel modules..."
+        $REMOVE_CMD rmmod nvidia_uvm nvidia_drm nvidia_modeset nvidia 2>/dev/null || true
+        
+        # Remove NVIDIA configuration files
+        echo "Removing NVIDIA configuration files..."
+        $REMOVE_CMD rm -rf /etc/nvidia* /etc/modprobe.d/nvidia* /etc/X11/xorg.conf.d/*nvidia* 2>/dev/null || true
+        
+        # Check if NVIDIA was installed via official installer (not package manager)
+        if [ -f /usr/bin/nvidia-uninstall ] && ! dpkg -S /usr/bin/nvidia-uninstall &>/dev/null; then
+            echo "Detected NVIDIA drivers installed via official installer (not package manager)"
+            echo "Using NVIDIA's official uninstaller..."
+            $REMOVE_CMD /usr/bin/nvidia-uninstall --no-questions --silent
+        else
+            # Remove nvidia-smi binary if it exists and is not managed by package system
+            if [ -f /usr/bin/nvidia-smi ] && ! dpkg -S /usr/bin/nvidia-smi &>/dev/null; then
+                echo "Removing unmanaged nvidia-smi binary..."
+                $REMOVE_CMD rm -f /usr/bin/nvidia-smi
+            fi
+            
+            # Remove any other NVIDIA binaries that might not be managed by packages
+            echo "Removing any remaining NVIDIA binaries..."
+            $REMOVE_CMD find /usr/bin -name "*nvidia*" -type f -executable -not -path "*/nvidia-settings*" -delete 2>/dev/null || true
+        fi
+        
+        echo
+        echo "✅ NVIDIA drivers completely removed!"
+        echo "⚠️  IMPORTANT: Reboot your system to complete the cleanup."
+        echo "   After reboot, you can install fresh NVIDIA drivers."
+        echo
+        read -p "Do you want to reboot now? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "Rebooting in 5 seconds... (Press Ctrl+C to cancel)"
+            sleep 5
+            $REMOVE_CMD reboot
+        else
+            echo "Please reboot manually when convenient."
+        fi
+        exit 0
+    else
+        echo "NVIDIA driver removal cancelled."
+        exit 0
+    fi
+fi
+
 echo "=== GPU Diagnostic Script ==="
 echo
 
@@ -168,88 +247,42 @@ if [ "$VERSION_MISMATCH" = true ] && [ "$OPEN_KERNEL_REQUIRED" = false ]; then
     if [[ $REPLY =~ ^[Yy]$ ]] || [ "$PROCESSES_USING_GPU" = false ]; then
         echo "Fixing driver version mismatch..."
         
-        # Check if running as root or if sudo is available
+        # Check if running as root or if sudo is available and working
         if [ "$EUID" -eq 0 ]; then
             FIX_CMD=""
-        elif command -v sudo &>/dev/null; then
+        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
             FIX_CMD="sudo"
         else
-            echo "❌ Error: Need root privileges or sudo to fix version mismatch"
-            echo "Please run: sudo apt update && sudo apt install --reinstall nvidia-driver"
+            echo "❌ Error: Need root privileges or working sudo to fix version mismatch"
+            echo "   Please run: sudo $0"
+            echo "   Or ensure your user has sudo privileges"
             exit 1
         fi
         
         if [ "$SMI_VERSION_MISMATCH" = true ]; then
-            echo "Fixing nvidia-smi binary version mismatch..."
-            echo "The nvidia-smi binary version doesn't match the kernel driver."
-            echo "This is a common issue with mixed driver installations."
-            
-            # Create a workaround nvidia-smi script
-            echo "Creating a workaround nvidia-smi script..."
-            $FIX_CMD tee /usr/bin/nvidia-smi-workaround > /dev/null << 'EOF'
-#!/bin/bash
-# Workaround nvidia-smi script for version mismatch
-# This script provides basic GPU information when nvidia-smi has version conflicts
-
-echo "NVIDIA-SMI Workaround (Version Mismatch Detected)"
-echo "================================================"
-echo
-
-# Check if NVIDIA modules are loaded
-if ! lsmod | grep -q nvidia; then
-    echo "❌ NVIDIA kernel modules not loaded"
-    exit 1
-fi
-
-# Get basic GPU info from /proc/driver/nvidia/gpus/
-if [ -d /proc/driver/nvidia/gpus ]; then
-    echo "GPU Information:"
-    for gpu_dir in /proc/driver/nvidia/gpus/*/; do
-        if [ -d "$gpu_dir" ]; then
-            gpu_id=$(basename "$gpu_dir")
-            echo "  GPU $gpu_id:"
-            if [ -f "$gpu_dir/information" ]; then
-                cat "$gpu_dir/information" | sed 's/^/    /'
-            fi
-        fi
-    done
-else
-    echo "❌ No GPU information available in /proc/driver/nvidia/gpus/"
-fi
-
-echo
-echo "Driver Information:"
-if [ -f /proc/driver/nvidia/version ]; then
-    cat /proc/driver/nvidia/version | sed 's/^/  /'
-else
-    echo "  ❌ Driver version not available"
-fi
-
-echo
-echo "Note: This is a workaround for nvidia-smi version mismatch."
-echo "The actual nvidia-smi binary has version conflicts with the kernel driver."
-echo "For full functionality, you may need to reinstall matching NVIDIA components."
-EOF
-            
-            $FIX_CMD chmod +x /usr/bin/nvidia-smi-workaround
-            
-            # Backup original nvidia-smi and replace with workaround
-            $FIX_CMD mv /usr/bin/nvidia-smi /usr/bin/nvidia-smi-original
-            $FIX_CMD ln -sf /usr/bin/nvidia-smi-workaround /usr/bin/nvidia-smi
-            
-            echo "✅ nvidia-smi workaround created!"
-            echo "   Original nvidia-smi backed up as: /usr/bin/nvidia-smi-original"
-            echo "   Workaround script created as: /usr/bin/nvidia-smi-workaround"
-            echo "   nvidia-smi now points to the workaround script"
+            echo "⚠️  nvidia-smi binary version mismatch detected!"
+            echo "   nvidia-smi binary: $(strings /usr/bin/nvidia-smi 2>/dev/null | grep -E '^580\.[0-9]+\.[0-9]+$' | head -1)"
+            echo "   kernel driver: $(cat /proc/driver/nvidia/version 2>/dev/null | grep -o '580\.[0-9]\+\.[0-9]\+' | head -1)"
             echo
-            
-            # Test the workaround
-            echo "Testing workaround nvidia-smi:"
-            nvidia-smi
-            
+            echo "This is a common issue with mixed NVIDIA driver installations."
+            echo "The nvidia-smi binary was compiled for a different driver version."
             echo
-            echo "⚠️  Note: This is a basic workaround. For full nvidia-smi functionality,"
-            echo "   you may need to reinstall the entire NVIDIA driver stack with matching versions."
+            echo "Recommended solutions:"
+            echo "1. Reinstall the entire NVIDIA driver stack:"
+            echo "   sudo apt remove --purge '^nvidia-.*'"
+            echo "   sudo apt autoremove"
+            echo "   sudo apt install nvidia-driver"
+            echo "   sudo reboot"
+            echo
+            echo "2. Or try to find a matching nvidia-smi binary:"
+            echo "   sudo apt search nvidia-smi"
+            echo
+            echo "3. Use alternative GPU monitoring tools:"
+            echo "   - lspci -k | grep -A2 -E 'VGA|3D|Display'"
+            echo "   - cat /proc/driver/nvidia/version"
+            echo "   - lsmod | grep nvidia"
+            echo
+            echo "⚠️  Manual intervention required - the script cannot automatically fix this."
         else
             echo "Attempting to reload NVIDIA modules without reboot..."
             # Try to unload and reload modules first
@@ -322,16 +355,15 @@ if [ "$OPEN_KERNEL_REQUIRED" = true ]; then
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo "Installing NVIDIA open kernel modules..."
         
-        # Check if running as root or if sudo is available
+        # Check if running as root or if sudo is available and working
         if [ "$EUID" -eq 0 ]; then
             INSTALL_CMD="apt"
-        elif command -v sudo &>/dev/null; then
+        elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
             INSTALL_CMD="sudo apt"
         else
-            echo "❌ Error: Need root privileges or sudo to install packages"
-            echo "Please run: sudo apt update && sudo apt install nvidia-kernel-open-dkms"
-            echo "Then run: sudo apt remove nvidia-kernel-dkms"
-            echo "Finally reboot your system"
+            echo "❌ Error: Need root privileges or working sudo to install packages"
+            echo "   Please run: sudo $0"
+            echo "   Or ensure your user has sudo privileges"
             exit 1
         fi
         
