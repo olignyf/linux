@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# gpu-diagnose.sh - Full GPU diagnostic script
+# gpu.sh - Full GPU diagnostic script
+# gpu.sh --remove-nvidia - Remove NVIDIA drivers and packages
 
 # Check for command line arguments
 if [ "$1" = "--remove-nvidia" ]; then
@@ -148,10 +149,28 @@ echo "[9] Checking for specific driver compatibility issues:"
 OPEN_KERNEL_REQUIRED=false
 VERSION_MISMATCH=false
 
-if dmesg | grep -q "requires use of the NVIDIA open kernel modules"; then
-    echo "⚠️  DETECTED: GPU requires NVIDIA open kernel modules"
-    echo "   → Your GPU needs the open kernel driver instead of proprietary driver"
-    OPEN_KERNEL_REQUIRED=true
+# Only check dmesg if nvidia-smi failed to detect GPU
+if ! nvidia-smi &>/dev/null; then
+    echo "   → nvidia-smi failed, checking kernel logs for additional diagnostics..."
+    if [ "$EUID" -eq 0 ] || command -v sudo &>/dev/null; then
+        if dmesg -T 2>/dev/null | grep "requires use of the NVIDIA open kernel modules" | awk -v cutoff="$(date -d '1 day ago' '+%Y-%m-%d %H:%M:%S')" '$0 > cutoff' | grep -q "requires use of the NVIDIA open kernel modules"; then
+            echo "⚠️  DETECTED: GPU requires NVIDIA open kernel modules (recent message)"
+            echo "   → Your GPU needs the open kernel driver instead of proprietary driver"
+            OPEN_KERNEL_REQUIRED=true
+        elif dmesg 2>/dev/null | grep -q "requires use of the NVIDIA open kernel modules"; then
+            echo "⚠️  DETECTED: GPU requires NVIDIA open kernel modules (older message)"
+            echo "   → Your GPU needs the open kernel driver instead of proprietary driver"
+            echo "   → Note: This message is from an older boot session"
+            OPEN_KERNEL_REQUIRED=true
+        else
+            echo "   → No 'requires open kernel modules' messages found in dmesg"
+        fi
+    else
+        echo "   → Additional kernel diagnostics require sudo privileges"
+        echo "   → Run 'sudo $0' for complete diagnostics"
+    fi
+else
+    echo "   → nvidia-smi working, skipping kernel log check"
 fi
 
 # Check for driver/library version mismatch
