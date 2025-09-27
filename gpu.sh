@@ -6,7 +6,7 @@
 if [ "$1" = "--remove-nvidia" ]; then
     echo "=== NVIDIA Driver Removal ==="
     echo "This will completely remove all NVIDIA drivers and packages."
-    echo "⚠️  WARNING: This will break NVIDIA GPU functionality until drivers are reinstalled."
+    echo "WARNING: This will break NVIDIA GPU functionality until drivers are reinstalled."
     echo
     read -p "Are you sure you want to proceed? (y/N): " -n 1 -r
     echo
@@ -17,15 +17,11 @@ if [ "$1" = "--remove-nvidia" ]; then
         if [ "$EUID" -eq 0 ]; then
             REMOVE_CMD=""
         else
-            echo "❌ Error: This script must be run as root for the --remove-nvidia option"
-            echo "   Please run: sudo $0 --remove-nvidia"
-            echo "   The --remove-nvidia option requires root privileges for safety"
+            echo "Error: This script must be run as root for the --remove-nvidia option"
+            echo "Please run: sudo $0 --remove-nvidia"
+            echo "The --remove-nvidia option requires root privileges for safety"
             exit 1
         fi
-        
-        # Stop any processes using NVIDIA devices
-        echo "Stopping processes using NVIDIA devices..."
-        $REMOVE_CMD lsof /dev/nvidia* 2>/dev/null | grep -v "COMMAND" | awk '{print $2}' | sort -u | xargs -r $REMOVE_CMD kill -9 2>/dev/null || true
         
         # Remove all NVIDIA packages
         echo "Removing NVIDIA packages..."
@@ -61,9 +57,9 @@ if [ "$1" = "--remove-nvidia" ]; then
         fi
         
         echo
-        echo "✅ NVIDIA drivers completely removed!"
-        echo "⚠️  IMPORTANT: Reboot your system to complete the cleanup."
-        echo "   After reboot, you can install fresh NVIDIA drivers."
+        echo "NVIDIA drivers completely removed! ✅"
+        echo "IMPORTANT: Reboot your system to complete the cleanup."
+        echo "  After reboot, you can install fresh NVIDIA drivers."
         echo
         read -p "Do you want to reboot now? (y/N): " -n 1 -r
         echo
@@ -157,13 +153,8 @@ if ! nvidia-smi &>/dev/null; then
             echo "⚠️  DETECTED: GPU requires NVIDIA open kernel modules (recent message)"
             echo "   → Your GPU needs the open kernel driver instead of proprietary driver"
             OPEN_KERNEL_REQUIRED=true
-        elif dmesg 2>/dev/null | grep -q "requires use of the NVIDIA open kernel modules"; then
-            echo "⚠️  DETECTED: GPU requires NVIDIA open kernel modules (older message)"
-            echo "   → Your GPU needs the open kernel driver instead of proprietary driver"
-            echo "   → Note: This message is from an older boot session"
-            OPEN_KERNEL_REQUIRED=true
         else
-            echo "   → No 'requires open kernel modules' messages found in dmesg"
+            echo "   → No 'requires open kernel modules' messages found in recent dmesg from the last day"
         fi
     else
         echo "   → Additional kernel diagnostics require sudo privileges"
@@ -180,8 +171,8 @@ if nvidia-smi 2>&1 | grep -q "Driver/library version mismatch"; then
     VERSION_MISMATCH=true
     
     # Check if nvidia-smi binary version matches driver version
-    KERNEL_VERSION=$(cat /proc/driver/nvidia/version 2>/dev/null | grep -o '580\.[0-9]\+\.[0-9]\+' | head -1)
-    SMI_VERSION=$(strings /usr/bin/nvidia-smi 2>/dev/null | grep -E '^580\.[0-9]+\.[0-9]+$' | head -1)
+    KERNEL_VERSION=$(cat /proc/driver/nvidia/version 2>/dev/null | grep -o '[0-9]\+\.[0-9]\+\.[0-9]\+' | head -1)
+    SMI_VERSION=$(strings /usr/bin/nvidia-smi 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
     
     if [ -n "$KERNEL_VERSION" ] && [ -n "$SMI_VERSION" ] && [ "$KERNEL_VERSION" != "$SMI_VERSION" ]; then
         echo "   → CAUSE: nvidia-smi binary version ($SMI_VERSION) doesn't match kernel driver ($KERNEL_VERSION)"
@@ -301,7 +292,8 @@ if [ "$VERSION_MISMATCH" = true ] && [ "$OPEN_KERNEL_REQUIRED" = false ]; then
             echo "   - cat /proc/driver/nvidia/version"
             echo "   - lsmod | grep nvidia"
             echo
-            echo "⚠️  Manual intervention required - the script cannot automatically fix this."
+            echo "4. You can try this script with the --remove-nvidia option: "
+            echo "   sudo ./gpu.sh --remove-nvidia"
         else
             echo "Attempting to reload NVIDIA modules without reboot..."
             # Try to unload and reload modules first
@@ -342,10 +334,7 @@ if [ "$VERSION_MISMATCH" = true ] && [ "$OPEN_KERNEL_REQUIRED" = false ]; then
         fi
     else
         echo "Skipping version mismatch fix."
-        echo "To fix manually later, run:"
-        echo "  sudo apt update"
-        echo "  sudo apt install --reinstall nvidia-driver"
-        echo "  sudo reboot"
+        echo "Try to remove existing NVIDIA drivers then re-install from the official website."
     fi
 fi
 
@@ -390,32 +379,37 @@ if [ "$OPEN_KERNEL_REQUIRED" = true ]; then
         echo "Updating package list..."
         $INSTALL_CMD update -y
         
-        # Check if we need to force installation due to version conflicts
-        CURRENT_VERSION=$(cat /proc/driver/nvidia/version 2>/dev/null | grep -o '580\.[0-9]\+\.[0-9]\+' | head -1)
-        OPEN_VERSION="580.82.07"
+        # Install NVIDIA open kernel modules
+        echo "Installing NVIDIA open kernel modules..."
         
-        echo "Installing nvidia-kernel-open-dkms..."
-        if [ -n "$CURRENT_VERSION" ] && [ "$CURRENT_VERSION" != "$OPEN_VERSION" ]; then
-            echo "⚠️  Detected version conflict: Current=$CURRENT_VERSION, Open=$OPEN_VERSION"
-            echo "   → Will force installation to override newer proprietary modules"
-            $INSTALL_CMD install -y nvidia-kernel-open-dkms
-            # Force DKMS to override version conflicts
-            dkms install nvidia/580.82.07 --force
+        # Try to find available open kernel module packages
+        OPEN_PACKAGES=$($INSTALL_CMD apt search nvidia-kernel-open 2>/dev/null | grep -E "nvidia-kernel-open.*dkms" | head -1 | awk '{print $1}')
+        
+        if [ -n "$OPEN_PACKAGES" ]; then
+            echo "Found open kernel module package: $OPEN_PACKAGES"
+            $INSTALL_CMD install -y $OPEN_PACKAGES
+            
+            # Get the installed version for DKMS
+            INSTALLED_VERSION=$(dpkg -l | grep nvidia-kernel-open-dkms | awk '{print $3}' | cut -d'-' -f1)
+            if [ -n "$INSTALLED_VERSION" ]; then
+                echo "Installing DKMS modules for version $INSTALLED_VERSION..."
+                dkms install nvidia/$INSTALLED_VERSION --force
+            fi
         else
-            $INSTALL_CMD install -y nvidia-kernel-open-dkms
+            echo "❌ No NVIDIA open kernel module packages found"
+            echo "   → Try installing manually: sudo apt install nvidia-kernel-open-dkms"
+            echo "   → Or check available packages: apt search nvidia-kernel-open"
         fi
         
         # Check if installation actually succeeded
         if [ $? -ne 0 ]; then
-            echo "❌ Installation failed! Trying with DKMS force flag..."
-            dkms install nvidia/580.82.07 --force
-            if [ $? -ne 0 ]; then
-                echo "❌ Installation still failed. Manual intervention required."
-                echo "Try running: sudo apt install nvidia-kernel-open-dkms"
-                echo "Then: sudo dkms install nvidia/580.82.07 --force"
-                echo "Finally: sudo apt remove nvidia-kernel-dkms"
-                exit 1
-            fi
+            echo "❌ Installation failed! Manual intervention required."
+            echo "Try running:"
+            echo "  sudo apt install nvidia-kernel-open-dkms"
+            echo "  sudo dkms install nvidia/\$(dpkg -l | grep nvidia-kernel-open-dkms | awk '{print \$3}' | cut -d'-' -f1) --force"
+            echo "  sudo apt remove nvidia-kernel-dkms"
+            echo "  sudo reboot"
+            exit 1
         fi
         
         echo "Removing proprietary kernel module..."
