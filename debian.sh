@@ -48,7 +48,19 @@ add_if_missing "deb-src http://deb.debian.org/debian/ trixie-updates main non-fr
 echo "Running apt update..."
 apt update
 
-echo "Installing gnome-shell-extension-prefs..."
-apt install -y gnome-shell-extension-prefs
+echo "Installing gnome-shell-extension-prefs and dash-to-panel..."
+apt install -y gnome-shell-extension-prefs gnome-shell-extension-dash-to-panel
+
+# promp user if he wants to upgrade the system
+read -p "Do you want to upgrade the system? (y/N): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    apt upgrade
+else
+    echo "Skipping system upgrade."
+fi
+
+# install kernel headers
+apt install -y linux-headers-$(uname -r)
 
 echo "Done."
