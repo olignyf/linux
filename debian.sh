@@ -22,11 +22,11 @@ fi
 
 # Colored splash screen (fixed-width lines so box aligns)
 show_splash() {
-  local bold cyan green yellow dim reset
+  local bold cyan green blue dim reset
   bold=$(tput bold)
   cyan=$(tput setaf 6)
   green=$(tput setaf 2)
-  yellow=$(tput setaf 3)
+  blue=$(tput setaf 12)
   dim=$(tput dim)
   reset=$(tput sgr0)
   clear
@@ -49,19 +49,15 @@ show_splash() {
   echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
   echo -e "${bold}${cyan}╚══════════════════════════════════════════════════════════════╝${reset}"
   echo ""
-  echo -e "  ${dim}${yellow}Press ${bold}Space${reset}${dim} to continue or ${bold}Esc${reset}${dim} to exit.${reset}"
+  echo -e "  ${dim}${green}${bold}Press Space or Enter${reset}${dim} to continue, ${bold}Esc${reset}${dim} or ${bold}Q${reset}${dim} to exit.${reset}"
   echo ""
   local key
   while true; do
-    read -n 1 -s -r key
-    if [[ "$key" == ' ' ]]; then
-      break
-    fi
-    if [[ "$key" == 'q' || "$key" == 'Q' || "$key" == $'\e' ]]; then
-      echo -e "${reset}"
-      echo "Exiting."
-      exit 0
-    fi
+    read -r -s -N 1 key < /dev/tty
+    case "$key" in
+      ' '|$'\x20'|$'\n'|$'\r') break ;;
+      [qQ]|$'\e') echo -e "${reset}"; echo "Exiting."; exit 0 ;;
+    esac
   done
   echo -e "${reset}"
 }
