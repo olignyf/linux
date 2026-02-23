@@ -167,7 +167,7 @@ fi
 apt install -y linux-headers-$(uname -r)
 
 # dev stuff
-apt install -y build-essential checkinstall libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev liblzma-dev wget curl llvm libncurses-dev xz-utils git
+apt install -y build-essential checkinstall libssl-dev libsqlite3-dev tk-dev libreadline-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev liblzma-dev wget curl llvm libncurses-dev xz-utils git
 curl https://pyenv.run | bash
 
 # Ensure pyenv block is in the real user's .bashrc (if not already)
