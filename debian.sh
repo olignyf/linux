@@ -63,6 +63,18 @@ show_splash() {
 }
 show_splash
 
+# Increase bash history size for all users (only if not already set)
+BASHRC="/etc/bash.bashrc"
+if ! grep -q 'HISTSIZE=' "${BASHRC}" 2>/dev/null && ! grep -q 'HISTFILESIZE=' "${BASHRC}" 2>/dev/null; then
+  echo '' >> "${BASHRC}"
+  echo '# Increase history size (added by debian.sh)' >> "${BASHRC}"
+  echo 'HISTSIZE=50000' >> "${BASHRC}"
+  echo 'HISTFILESIZE=50000' >> "${BASHRC}"
+  echo "Added HISTSIZE=50000 and HISTFILESIZE=50000 to ${BASHRC}"
+else
+  echo "History size already configured in ${BASHRC}, skipping."
+fi
+
 SOURCES_LIST="/etc/apt/sources.list"
 
 # Step 2: Show current sources.list
@@ -92,7 +104,58 @@ echo "Running apt update..."
 apt update
 
 echo "Installing gnome-shell-extension-prefs and dash-to-panel..."
-apt install -y gnome-shell-extension-prefs gnome-shell-extension-dash-to-panel
+apt install -y gnome-shell-extension-prefs gnome-shell-extension-dash-to-panel terminator xfce4-terminal locate
+
+# Create terminator config for the user who ran sudo (not root)
+if [ -n "${SUDO_USER:-}" ]; then
+  USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  if [ -n "$USER_HOME" ]; then
+    TERM_CONFIG_DIR="$USER_HOME/.config/terminator"
+    mkdir -p "$TERM_CONFIG_DIR"
+    cat <<EOF > "$TERM_CONFIG_DIR/config"
+[global_config]
+  copy_on_selection = True
+[keybindings]
+[profiles]
+  [[default]]
+    cursor_color = "#aaaaaa"
+    use_system_font = True
+    font = JetBrainsMono Nerd Font 14
+[layouts]
+  [[default]]
+    [[[child1]]]
+      parent = window0
+      type = Terminal
+    [[[window0]]]
+      parent = ""
+      type = Window
+[plugins]
+EOF
+    chown -R "$SUDO_USER:$SUDO_USER" "$TERM_CONFIG_DIR"
+    echo "Terminator config written to $TERM_CONFIG_DIR for $SUDO_USER."
+  else
+    echo "Could not find home for $SUDO_USER, skipping terminator config."
+  fi
+else
+  echo "Not run via sudo: terminator config not written (run with: sudo $0)."
+fi
+echo "Terminator installed and 'Copy on Selection' enabled."
+
+# xfce4-terminal: copy on select, paste on right click
+if [ -n "${SUDO_USER:-}" ]; then
+  USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  if [ -n "$USER_HOME" ]; then
+    XFCE_TERM_DIR="$USER_HOME/.config/xfce4/terminal"
+    mkdir -p "$XFCE_TERM_DIR"
+    cat <<EOF > "$XFCE_TERM_DIR/terminalrc"
+[Configuration]
+MiscCopyOnSelect=TRUE
+MiscRightClickPaste=TRUE
+EOF
+    chown -R "$SUDO_USER:$SUDO_USER" "$XFCE_TERM_DIR"
+    echo "xfce4-terminal config written to $XFCE_TERM_DIR (copy on select, paste on right click)."
+  fi
+fi
 
 # promp user if he wants to upgrade the system
 read -p "Do you want to upgrade the system? (y/N): " -n 1 -r
