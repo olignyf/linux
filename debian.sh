@@ -41,15 +41,13 @@ show_splash() {
   echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
   printf -v pad '%-*s' "$w" "  • Install GNOME extensions: prefs + Dash to Panel"
   echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
-  printf -v pad '%-*s' "$w" "  • Optional: full system upgrade (you will be asked)"
-  echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
   printf -v pad '%-*s' "$w" "  • Install kernel headers for current kernel"
   echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
-  printf -v pad '%-*s' "$w" "  • Install nvm (Node Version Manager)"
+  printf -v pad '%-*s' "$w" "  • Install dev tools: nvm, pyenv"
   echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
   echo -e "${bold}${cyan}╚══════════════════════════════════════════════════════════════╝${reset}"
   echo ""
-  echo -e "  ${dim}${green}${bold}Press Space or Enter${reset}${dim} to continue, ${bold}Esc${reset}${dim} or ${bold}Q${reset}${dim} to exit.${reset}"
+  echo -e "  ${dim}${green}${bold}Press Space${reset} or ${green}${bold}Enter${reset}${dim} to continue, ${bold}Esc${reset}${dim} or ${bold}Q${reset}${dim} to exit.${reset}"
   echo ""
   local key
   while true; do
@@ -106,6 +104,7 @@ apt update
 echo "Installing gnome-shell-extension-prefs and dash-to-panel..."
 apt install -y gnome-shell-extension-prefs gnome-shell-extension-dash-to-panel terminator xfce4-terminal locate
 
+
 # Create terminator config for the user who ran sudo (not root)
 if [ -n "${SUDO_USER:-}" ]; then
   USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
@@ -154,7 +153,7 @@ if [ -n "${SUDO_USER:-}" ]; then
   <property name="misc-copy-on-select" type="bool" value="true"/>
   <property name="scrolling-lines" type="uint" value="999"/>
   <property name="scrolling-unlimited" type="bool" value="true"/>
-  <property name="misc-default-geometry" type="string" value="100x64"/>
+  <property name="misc-default-geometry" type="string" value="100x44"/>
 </channel>
 
 EOF
@@ -164,17 +163,32 @@ EOF
   fi
 fi
 
-# promp user if he wants to upgrade the system
-read -p "Do you want to upgrade the system? (y/N): " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    apt upgrade
-else
-    echo "Skipping system upgrade."
-fi
-
 # install kernel headers
 apt install -y linux-headers-$(uname -r)
+
+# dev stuff
+apt install -y build-essential checkinstall libssl-dev libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev libffi-dev liblzma-dev wget curl llvm libncurses-dev xz-utils git
+curl https://pyenv.run | bash
+
+# Ensure pyenv block is in the real user's .bashrc (if not already)
+if [ -n "${SUDO_USER:-}" ]; then
+  USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+  if [ -n "$USER_HOME" ]; then
+    USER_BASHRC="$USER_HOME/.bashrc"
+    if ! grep -q 'pyenv init' "$USER_BASHRC" 2>/dev/null; then
+      cat <<'PYENV_EOF' >> "$USER_BASHRC"
+
+# pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - bash)"
+PYENV_EOF
+      echo "Added pyenv block to $USER_BASHRC for $SUDO_USER."
+    else
+      echo "pyenv already configured in $USER_BASHRC, skipping."
+    fi
+  fi
+fi
 
 wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
 
