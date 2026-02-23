@@ -145,13 +145,20 @@ echo "Terminator installed and 'Copy on Selection' enabled."
 if [ -n "${SUDO_USER:-}" ]; then
   USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
   if [ -n "$USER_HOME" ]; then
-    XFCE_TERM_DIR="$USER_HOME/.config/xfce4/terminal"
+    XFCE_TERM_DIR="$USER_HOME/.config/xfce4/xfconf/xfce-perchannel-xml"
     mkdir -p "$XFCE_TERM_DIR"
-    cat <<EOF > "$XFCE_TERM_DIR/terminalrc"
-[Configuration]
-MiscCopyOnSelect=TRUE
-MiscRightClickPaste=TRUE
+    cat <<EOF > "$XFCE_TERM_DIR/xfce4-terminal.xml"
+<?xml version="1.1" encoding="UTF-8"?>
+
+<channel name="xfce4-terminal" version="1.0">
+  <property name="misc-copy-on-select" type="bool" value="true"/>
+  <property name="scrolling-lines" type="uint" value="999"/>
+  <property name="scrolling-unlimited" type="bool" value="true"/>
+  <property name="misc-default-geometry" type="string" value="100x64"/>
+</channel>
+
 EOF
+
     chown -R "$SUDO_USER:$SUDO_USER" "$XFCE_TERM_DIR"
     echo "xfce4-terminal config written to $XFCE_TERM_DIR (copy on select, paste on right click)."
   fi
