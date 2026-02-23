@@ -20,6 +20,53 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+# Colored splash screen (fixed-width lines so box aligns)
+show_splash() {
+  local bold cyan green yellow dim reset
+  bold=$(tput bold)
+  cyan=$(tput setaf 6)
+  green=$(tput setaf 2)
+  yellow=$(tput setaf 3)
+  dim=$(tput dim)
+  reset=$(tput sgr0)
+  clear
+  echo ""
+  local w=58
+  local pad
+  printf -v pad '%-*s' "$w" "  Debian 13 (Trixie) — Setup"
+  echo -e "${bold}${cyan}╔══════════════════════════════════════════════════════════════╗${reset}"
+  echo -e "${bold}${cyan}║${reset}${bold}${pad}${reset}${bold}${cyan}      ║${reset}"
+  echo -e "${bold}${cyan}╠══════════════════════════════════════════════════════════════╣${reset}"
+  printf -v pad '%-*s' "$w" "  • Configure apt sources (main, security, updates)"
+  echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
+  printf -v pad '%-*s' "$w" "  • Install GNOME extensions: prefs + Dash to Panel"
+  echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
+  printf -v pad '%-*s' "$w" "  • Optional: full system upgrade (you will be asked)"
+  echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
+  printf -v pad '%-*s' "$w" "  • Install kernel headers for current kernel"
+  echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
+  printf -v pad '%-*s' "$w" "  • Install nvm (Node Version Manager)"
+  echo -e "${bold}${cyan}║${reset}${pad:0:2}${green}${pad:2:1}${reset}${pad:3}${bold}${cyan}      ║${reset}"
+  echo -e "${bold}${cyan}╚══════════════════════════════════════════════════════════════╝${reset}"
+  echo ""
+  echo -e "  ${dim}${yellow}Press ${bold}Space${reset}${dim} to continue or ${bold}Esc${reset}${dim} to exit.${reset}"
+  echo ""
+  local key
+  while true; do
+    read -n 1 -s -r key
+    if [[ "$key" == ' ' ]]; then
+      break
+    fi
+    if [[ "$key" == 'q' || "$key" == 'Q' || "$key" == $'\e' ]]; then
+      echo -e "${reset}"
+      echo "Exiting."
+      exit 0
+    fi
+  done
+  echo -e "${reset}"
+}
+show_splash
+
 SOURCES_LIST="/etc/apt/sources.list"
 
 # Step 2: Show current sources.list
