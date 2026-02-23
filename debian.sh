@@ -63,4 +63,6 @@ fi
 # install kernel headers
 apt install -y linux-headers-$(uname -r)
 
+wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+
 echo "Done."
